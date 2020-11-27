@@ -58,3 +58,5 @@ DEBUG:urllib3.connectionpool:https://sandbox.zenodo.org:443 "PUT /api/deposit/de
 INFO:root:Metadata added for events\event-000.md
 INFO:root:*** Sorse Zenodo Upload Stop ***
 ```
+
+This run generated two new files [event-000-new.md](events/event-000-new.md) (`--overwrite` flag was not set) and [event-000.pdf](generate-pdfs/event-000.pdf) generated via generate-pdfs.sh. This event is also added to the Zenodo Sandbox [here](https://10.5072/zenodo.703612)
