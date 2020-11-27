@@ -112,15 +112,13 @@ def sorse_zenodo_upload(args):
         
         # update .md with DOI
         post['doi'] = doi
-        
         filename, file_extension = os.path.splitext(str(path))
         outputpath = str(path) if overwrite else filename+'-new'+file_extension
-        
         output_file = open(outputpath, 'wb')
         frontmatter.dump(post, output_file)
         
         # generate PDF
-        return
+        
 
         # TODO: Here the PDF should be added, for now the MD is put
         # The target URL is a combination of the bucket link with the desired filename
