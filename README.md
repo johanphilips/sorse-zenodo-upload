@@ -6,8 +6,13 @@
 - If any goes wrong for a particular event item (.md file), the script stops processing this file, but continues with the next one. The process will not be backtracked and possibly a partial Zenodo deposition remains. Check the log file for more information.
 
 # Installation
-- docker
-- pip install -r requirements.txt
+
+```
+$ docker build -t rseng/pdf-generator https://github.com/rseng/pdf-generator.git
+$ git clone https://github.com/johanphilips/sorse-zenodo-upload.git
+$ cd sorse-zenodo-upload
+$ pip install -r requirements.txt
+```
 
 # Usage
 
