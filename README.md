@@ -42,6 +42,7 @@ The script will create a log file `sorse-zenodo-upload.log` in the current direc
 # Example
 
 ```sh
+$ export ZENODO_SANDBOX_TOKEN=<TOKEN>
 $ python sorse-zenodo-upload.py --sandboxing --inputpath ./events --communityid ecfunded
 $ cat sorse-zenodo-upload.log
 INFO:root:*** Sorse Zenodo Upload Start ***
