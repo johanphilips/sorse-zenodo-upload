@@ -1,9 +1,13 @@
 # sorse-zenodo-upload
 
 # Assumptions
-- Enviroment variable `ZENODO_API_TOKEN` or `ZENODO_SANDBOX_API_TOKEN` required to connect to Zenodo or its Sandbox (if `--sandboxing` is provided).
+- If you do not supply a `token` with `--token <TOKEN>`, the script takes enviroment variable `ZENODO_API_TOKEN` or `ZENODO_SANDBOX_API_TOKEN` to connect to Zenodo or its Sandbox (if `--sandboxing` is provided).
 - .md files have frontmatter corresponding to the SORSE format. Currently only basic checks are done, such as the presence of `title` and `affiliations` fields.
 - If any goes wrong for a particular event item (.md file), the script stops processing this file, but continues with the next one. The process will not be backtracked and possibly a partial Zenodo deposition remains. Check the log file for more information.
+
+# Installation
+- docker
+- pip install -r requirements.txt
 
 # Usage
 
