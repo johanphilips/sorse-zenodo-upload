@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 import frontmatter
 import logging
 from pathlib import Path
+import subprocess
+from io import BytesIO
+from shutil import copyfile
 
 # Workflow 
 # A new branch is generated on the website repository
@@ -50,6 +53,7 @@ def sorse_zenodo_upload(args):
     sandboxing = args.sandboxing
     communityid = args.communityid
     publish = args.publish
+    overwrite = args.overwrite
     access_token = args.token if not args.token is None else os.getenv('ZENODO_SANDBOX_TOKEN') if sandboxing else os.getenv('ZENODO_TOKEN')
     api_uri = 'https://sandbox.zenodo.org' if sandboxing else 'https://zenodo.org'
 
@@ -107,13 +111,29 @@ def sorse_zenodo_upload(args):
             # do not add other author fields, because the Zenodo API will complain
             creators.append(creator)
         
-        # TODO: Here the PDF should be added, for now the MD is put
+        # update .md with DOI
+        post['doi'] = doi
+        filename, file_extension = os.path.splitext(str(path))
+        outputpath = str(path) if overwrite else filename+'-new'+file_extension
+        output_file = open(outputpath, 'wb')
+        frontmatter.dump(post, output_file)
+        output_file.close()
+        # generate PDF
+        temp_file = open('./generate-pdf/'+ path.name, 'wb')
+        frontmatter.dump(post, temp_file)
+        temp_file.close()
+        # copyfile(outputpath, './generate-pdf/'+ path.name) # this might not finish before the subprocess call
+        subprocess.call(['sh', './generate-pdfs.sh'])
+        os.remove('./generate-pdf/'+ path.name)
+
         # The target URL is a combination of the bucket link with the desired filename
         # seperated by a slash.
-        logging.info("Uploading file contents for %s", path)
-        with open(path, "rb") as fp:
+        pdfpath = './generate-pdf/' + os.path.basename(filename) + '.pdf' # use the event filename for the pdf
+        logging.info("Uploading file contents for %s", pdfpath)
+        
+        with open(pdfpath, "rb") as fp:
             r = requests.put(
-                "%s/%s" % (bucket_url, path.name),
+                "%s/%s" % (bucket_url, os.path.basename(filename) + '.pdf'),
                 data=fp,
                 params=params,
             )
@@ -121,7 +141,7 @@ def sorse_zenodo_upload(args):
             logging.error("Failed upload file contents! Response: %i: %s", r.status_code, r.json())
             print("Error processing {}, check log file for more information".format(path))
             continue
-        logging.info("File contents uploaded for %s", path)
+        logging.info("File contents uploaded for %s", pdfpath)
     
         # add metadata to deposition
         data = { 'metadata': {
@@ -161,15 +181,14 @@ def sorse_zenodo_upload(args):
                 continue
             logging.info("Deposition published for %s", path)
         # touch a file to indicate we have processed this event
-        
+
 
 if __name__ == "__main__":
     load_dotenv() # for Zenodo Token
     parser = ArgumentParser("SORSE Zenodo Upload script. This script will browse recursively through DATA_PATH and look for .md files that match the format of the SORSE website.")
     parser.add_argument('--sandboxing', help='If supplied, Zenodo Sandbox will be used instead.', required=False, action='store_true')
     parser.add_argument('--inputpath',  help='The root folder for the input files.', required=True)
-    parser.add_argument('--outputpath', help='the root folder for the output files, containing the doi. If omitted, INPUTPATH will be used.', required=False)
-    parser.add_argument('--overwrite', help='If supplied, DOIs will be added inline to input files.', required=False, action='store_true')
+    parser.add_argument('--overwrite', help='If supplied, DOIs will be added inline to input files. Otherwise *-new.md files will be created', required=False, action='store_true')
     parser.add_argument('--token', help='If not provided in .env as ZENODO_TOKEN (or ZENODO_SANDBOX_TOKEN), you can supply the Zenodo Token here.', required=False)
     parser.add_argument('--communityid', help='Community ID to be used in Zenodo.', required=False, default='sorse')
     parser.add_argument('--publish', help='If supplied, depositions will be published as well.', required=False, action='store_true')

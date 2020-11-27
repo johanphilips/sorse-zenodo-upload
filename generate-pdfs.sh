@@ -1,0 +1,1 @@
+MSYS_NO_PATHCONV=1 docker run --env-file generate-pdf/env.txt -v `pwd`:/github/workspace --rm -it rseng/pdf-generator
