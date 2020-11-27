@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 import subprocess
 from io import BytesIO
+from shutil import copyfile
 
 # Workflow 
 # A new branch is generated on the website repository
@@ -116,17 +117,23 @@ def sorse_zenodo_upload(args):
         outputpath = str(path) if overwrite else filename+'-new'+file_extension
         output_file = open(outputpath, 'wb')
         frontmatter.dump(post, output_file)
-        
+        output_file.close()
         # generate PDF
-        
+        temp_file = open('./generate-pdf/'+ path.name, 'wb')
+        frontmatter.dump(post, temp_file)
+        temp_file.close()
+        # copyfile(outputpath, './generate-pdf/'+ path.name) # this might not finish before the subprocess call
+        subprocess.call(['sh', './generate-pdfs.sh'])
+        os.remove('./generate-pdf/'+ path.name)
 
-        # TODO: Here the PDF should be added, for now the MD is put
         # The target URL is a combination of the bucket link with the desired filename
         # seperated by a slash.
-        logging.info("Uploading file contents for %s", path)
-        with open(path, "rb") as fp:
+        pdfpath = './generate-pdf/' + os.path.basename(filename) + '.pdf' # use the event filename for the pdf
+        logging.info("Uploading file contents for %s", pdfpath)
+        
+        with open(pdfpath, "rb") as fp:
             r = requests.put(
-                "%s/%s" % (bucket_url, path.name),
+                "%s/%s" % (bucket_url, os.path.basename(filename) + '.pdf'),
                 data=fp,
                 params=params,
             )
@@ -134,7 +141,7 @@ def sorse_zenodo_upload(args):
             logging.error("Failed upload file contents! Response: %i: %s", r.status_code, r.json())
             print("Error processing {}, check log file for more information".format(path))
             continue
-        logging.info("File contents uploaded for %s", path)
+        logging.info("File contents uploaded for %s", pdfpath)
     
         # add metadata to deposition
         data = { 'metadata': {
