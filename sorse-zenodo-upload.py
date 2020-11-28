@@ -11,7 +11,7 @@ import subprocess
 from io import BytesIO
 from shutil import copyfile
 
-# Workflow 
+# original porkflow 
 # A new branch is generated on the website repository
 # For each new contribution (regular or invited), a new upload is triggered via https://zenodo.org/deposit/new?c=sorse
 # contents for the form are copied from the corresponding markdown files
@@ -49,15 +49,16 @@ from shutil import copyfile
 # 500 Internal Server Error
 
 def sorse_zenodo_upload(args):
+    # pure for convenience...
     inputpath = args.inputpath
     sandboxing = args.sandboxing
     communityid = args.communityid
     publish = args.publish
     overwrite = args.overwrite
+    workingpath = args.workingpath
+
     access_token = args.token if not args.token is None else os.getenv('ZENODO_SANDBOX_TOKEN') if sandboxing else os.getenv('ZENODO_TOKEN')
     api_uri = 'https://sandbox.zenodo.org' if sandboxing else 'https://zenodo.org'
-
-    # convenience variables for requests to Zenodo API
     headers = {"Content-Type": "application/json"}
     params = {'access_token': access_token}
 
@@ -66,7 +67,11 @@ def sorse_zenodo_upload(args):
     events = Path(inputpath).rglob('*.md')
     for path in events:
         print("Processing {}".format(path))
+        logging.info("Processing %s", path)
         post = frontmatter.load(path)
+        if 'publish' in post and post['publish'] == 'no':
+            logging.info("Found 'publish': 'no' field. Skipping %s", path)
+            continue
         if not 'title' in post or not 'affiliations' in post:
             logging.error('Could not find a title or affiliations in the frontmatter in event %s, check file contents.', path)
             print("Error processing {}, check log file for more information".format(path))
@@ -82,8 +87,9 @@ def sorse_zenodo_upload(args):
             params=params,
             json={},
             headers=headers)
+        
         if (r.status_code != 201):
-            logging.error("Failed to create empty deposition! Response: %i: %s", r.status_code, r.json())
+            logging.error("Failed to create empty deposition! Response: %i: %s", r.status_code, r.content)
             print("Error processing {}, check log file for more information".format(path))
             continue
         # Fetch DOI from prereservation
@@ -100,14 +106,19 @@ def sorse_zenodo_upload(args):
         for aut in authors:
             creator = dict()
             creator['name'] = aut['name']
+            if not 'affiliation' in aut:
+                logging.error('Author %s in event %s does not have an affiliation! Defaulting to N/A', aut['name'], path)
+                creator['affiliation'] = 'N/A'
+            else:
+                aff_index = aut['affiliation']
+                # find affiliation string
+                for keyval in affiliations:
+                    if aff_index == keyval['index']:
+                        creator['affiliation'] = keyval['name']
+                        break
             if 'orcid' in aut:
                 creator['orcid'] = aut['orcid'] 
-            aff_index = aut['affiliation']
-            # find affiliation string
-            for keyval in affiliations:
-                if aff_index == keyval['index']:
-                    creator['affiliation'] = keyval['name']
-                    break
+            
             # do not add other author fields, because the Zenodo API will complain
             creators.append(creator)
         
@@ -119,16 +130,16 @@ def sorse_zenodo_upload(args):
         frontmatter.dump(post, output_file)
         output_file.close()
         # generate PDF
-        temp_file = open('./generate-pdf/'+ path.name, 'wb')
+        temp_file = open(workingpath + '/' + path.name, 'wb')
         frontmatter.dump(post, temp_file)
         temp_file.close()
         # copyfile(outputpath, './generate-pdf/'+ path.name) # this might not finish before the subprocess call
         subprocess.call(['sh', './generate-pdfs.sh'])
-        os.remove('./generate-pdf/'+ path.name)
+        # os.remove('./generate-pdf/'+ path.name)
 
         # The target URL is a combination of the bucket link with the desired filename
         # seperated by a slash.
-        pdfpath = './generate-pdf/' + os.path.basename(filename) + '.pdf' # use the event filename for the pdf
+        pdfpath = workingpath + '/' + os.path.basename(filename) + '.pdf' # use the event filename for the pdf
         logging.info("Uploading file contents for %s", pdfpath)
         
         with open(pdfpath, "rb") as fp:
@@ -138,7 +149,7 @@ def sorse_zenodo_upload(args):
                 params=params,
             )
         if (r.status_code != 200):
-            logging.error("Failed upload file contents! Response: %i: %s", r.status_code, r.json())
+            logging.error("Failed upload file contents! Response: %i: %s", r.status_code, r.content)
             print("Error processing {}, check log file for more information".format(path))
             continue
         logging.info("File contents uploaded for %s", pdfpath)
@@ -165,7 +176,7 @@ def sorse_zenodo_upload(args):
                     params=params, data=json.dumps(data),
                     headers=headers)
         if (r.status_code != 200):
-            logging.error("Failed to add metadata to deposition! Response: %i: %s", r.status_code, r.json())
+            logging.error("Failed to add metadata to deposition! Response: %i: %s", r.status_code, r.content)
             print("Error processing {}, check log file for more information".format(path))
             continue
         logging.info("Metadata added for %s", path)
@@ -176,24 +187,25 @@ def sorse_zenodo_upload(args):
             r = requests.post(api_uri+'/api/deposit/depositions/%s/actions/publish' % deposition_id,
                        params=params)
             if (r.status_code != 202):
-                logging.error("Failed to publish deposition! Response: %i: %s", r.status_code, r.json())
+                logging.error("Failed to publish deposition! Response: %i: %s", r.status_code, r.content)
                 print("Error processing {}, check log file for more information".format(path))
                 continue
             logging.info("Deposition published for %s", path)
-        # touch a file to indicate we have processed this event
-
+        logging.info("Finished processing %s", path)
 
 if __name__ == "__main__":
     load_dotenv() # for Zenodo Token
-    parser = ArgumentParser("SORSE Zenodo Upload script. This script will browse recursively through DATA_PATH and look for .md files that match the format of the SORSE website.")
+    parser = ArgumentParser("SORSE Zenodo Upload script. This script will browse recursively through INPUTPATH and look for .md files that match the format of the SORSE website.")
     parser.add_argument('--sandboxing', help='If supplied, Zenodo Sandbox will be used instead.', required=False, action='store_true')
     parser.add_argument('--inputpath',  help='The root folder for the input files.', required=True)
+    parser.add_argument('--workingpath', help='The folder that will be used to create new markdowns and pdfs', default='../ci', required=False)
     parser.add_argument('--overwrite', help='If supplied, DOIs will be added inline to input files. Otherwise *-new.md files will be created', required=False, action='store_true')
     parser.add_argument('--token', help='If not provided in .env as ZENODO_TOKEN (or ZENODO_SANDBOX_TOKEN), you can supply the Zenodo Token here.', required=False)
     parser.add_argument('--communityid', help='Community ID to be used in Zenodo.', required=False, default='sorse')
     parser.add_argument('--publish', help='If supplied, depositions will be published as well.', required=False, action='store_true')
-
+    
     args = parser.parse_args()
+    print(args.communityid)
     logging.basicConfig(filename='sorse_zenodo_upload.log', level=logging.DEBUG)
     logging.info('*** Sorse Zenodo Upload Start ***')
     sorse_zenodo_upload(args)
